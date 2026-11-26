@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Simpan Video Affiliate</title>
+<style>
+:root{--bg:#f3f5f9;--card:#ffffff;--fg:#141824;--muted:#5d6577;--line:#dde2ec;--accent:#1f6feb;--accent-fg:#ffffff;--ok:#1a7f37}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1117;--card:#171b24;--fg:#e8ebf2;--muted:#9aa3b5;--line:#2a3140;--accent:#4c8dff;--accent-fg:#06101f;--ok:#4ac26b;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+ padding:calc(env(safe-area-inset-top,0px) + 20px) max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 32px) max(16px,env(safe-area-inset-left,0px))}
+main{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font-size:1.5rem;margin:0;line-height:1.2}
+p{margin:0;color:var(--muted)}
+select,button{font:inherit}
+select{width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+.big{width:100%;padding:16px;border:0;border-radius:14px;background:var(--accent);color:var(--accent-fg);font-weight:700;font-size:1.1rem;cursor:pointer}
+.big:disabled{opacity:.55;cursor:default}
+.status{font-size:.95rem;color:var(--muted);min-height:1.5em}
+.status.ok{color:var(--ok);font-weight:600}
+.bar{height:8px;border-radius:8px;background:var(--line);overflow:hidden}
+.bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+li{display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px}
+li video{width:64px;height:114px;object-fit:cover;border-radius:8px;background:#000;flex:none}
+li .t{min-width:0;flex:1}
+li b{display:block;font-variant-numeric:tabular-nums}
+li span{color:var(--muted);font-size:.9rem;word-break:break-word}
+li button{flex:none;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--fg);cursor:pointer}
+.hint{font-size:.9rem;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Simpan Video Affiliate</h1>
+  <p id="intro">Pilih tanggal, lalu simpan semua video sekaligus ke Galeri.</p>
+  <select id="date" aria-label="Tanggal"></select>
+  <button class="big" id="prep">Siapkan semua video</button>
+  <button class="big" id="save" hidden>Simpan semua ke Galeri</button>
+  <div class="bar" aria-hidden="true"><i id="prog"></i></div>
+  <div class="status" id="status" role="status"></div>
+  <div class="hint" id="hint"></div>
+  <ul id="list"></ul>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+let items=[],files=[];
+$('hint').textContent=isIOS
+ ?'iPhone: ketuk "Siapkan", tunggu selesai, lalu ketuk "Simpan semua ke Galeri" dan pilih "Simpan Video". Semua video masuk ke app Foto.'
+ :'Android/PC: ketuk "Siapkan", lalu "Simpan semua". Kalau browser bertanya "izinkan download banyak file", pilih Izinkan. Video masuk ke folder Download dan muncul di Galeri.';
+function setStatus(t,ok){const s=$('status');s.textContent=t;s.className='status'+(ok?' ok':'')}
+async function loadDates(){
+  const r=await fetch('dates.json',{cache:'no-store'});const dates=await r.json();
+  const sel=$('date');sel.innerHTML='';
+  for(const d of dates){const o=document.createElement('option');o.value=d;o.textContent=d;sel.appendChild(o)}
+  const q=new URLSearchParams(location.search).get('d');
+  if(q&&dates.includes(q))sel.value=q;
+  await loadList();
+}
+async function loadList(){
+  files=[];$('save').hidden=true;$('prep').hidden=false;$('prep').disabled=false;$('prog').style.width='0';setStatus('');
+  const d=$('date').value;const r=await fetch(d+'/manifest.json',{cache:'no-store'});items=await r.json();
+  const ul=$('list');ul.innerHTML='';
+  items.forEach((it,i)=>{
+    const li=document.createElement('li');
+    const v=document.createElement('video');v.src=d+'/'+it.file+'#t=1';v.preload='metadata';v.muted=true;v.playsInline=true;
+    const t=document.createElement('div');t.className='t';
+    const b=document.createElement('b');b.textContent=it.time;const s=document.createElement('span');s.textContent=it.label;
+    t.append(b,s);
+    const btn=document.createElement('button');btn.textContent='Simpan';btn.onclick=()=>saveOne(i,btn);
+    li.append(v,t,btn);ul.appendChild(li);
+  });
+  setStatus(items.length+' video siap disiapkan.');
+}
+function nameOf(it){return it.time.replace('.','')+'_'+it.label.replace(/[^A-Za-z0-9-]+/g,'-')+'.mp4'}
+async function fetchOne(it){const d=$('date').value;const r=await fetch(d+'/'+it.file);if(!r.ok)throw new Error(r.status);const b=await r.blob();return new File([b],nameOf(it),{type:'video/mp4'})}
+$('prep').onclick=async()=>{
+  $('prep').disabled=true;files=[];
+  try{
+    for(let i=0;i<items.length;i++){setStatus('Menyiapkan '+(i+1)+' dari '+items.length+'…');files.push(await fetchOne(items[i]));$('prog').style.width=((i+1)/items.length*100)+'%'}
+    $('prep').hidden=true;$('save').hidden=false;setStatus('Semua video siap. Ketuk tombol simpan.',true);
+  }catch(e){setStatus('Gagal mengunduh video. Cek koneksi lalu coba lagi.');$('prep').disabled=false}
+};
+async function shareFiles(fs){await navigator.share({files:fs})}
+function download(f){const a=document.createElement('a');a.href=URL.createObjectURL(f);a.download=f.name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000)}
+$('save').onclick=async()=>{
+  try{
+    if(isIOS&&navigator.canShare&&navigator.canShare({files})){await shareFiles(files);setStatus('Selesai. Cek app Foto.',true)}
+    else{for(const f of files){download(f);await new Promise(r=>setTimeout(r,700))}setStatus('Download dimulai. Cek folder Download / Galeri.',true)}
+  }catch(e){if(e&&e.name==='AbortError')setStatus('Dibatalkan.');else setStatus('Tidak bisa menyimpan otomatis. Pakai tombol Simpan per video.')}
+};
+async function saveOne(i,btn){
+  btn.disabled=true;btn.textContent='…';
+  try{const f=files[i]||await fetchOne(items[i]);
+    if(isIOS&&navigator.canShare&&navigator.canShare({files:[f]}))await shareFiles([f]);else download(f);
+    btn.textContent='✓'}catch(e){btn.textContent='Simpan';btn.disabled=false}
+}
+$('date').onchange=loadList;
+loadDates().catch(()=>setStatus('Daftar video belum tersedia.'));
+</script>
+</body>
+</html>
